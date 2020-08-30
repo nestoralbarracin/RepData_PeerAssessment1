@@ -12,9 +12,8 @@ First we load the data from the `activity.csv`. We use `dplyr` library for easie
 manipulation with the data. The dates are handled with the `lubridate` library.
 
 ```{r load_and_process, message=FALSE}
-library(dplyr)
-library(lubridate)
-activity <- tbl_df(read.csv("C:/SPB_Data/activity.csv")) %>% mutate(date = ymd(date))
+data <- read.csv("activity.csv")  
+
 ```
 
 
@@ -24,115 +23,103 @@ First, we calculate total number of steps taken each day; we omit the incomplete
 i.e., when the number of steps is not reported (missing in the data).
 
 ```{r total_steps}
-total_steps <- subset(activity, complete.cases(activity)) %>% 
-  group_by(date) %>% 
-  summarize(total = sum(steps))
+steps_by_day <- aggregate(steps ~ date, data, sum)
+
 ```
 
 Next, we make a histogram of the total number of steps in order to see its variance 
 and distribution.
 
 ```{r hist}
-hist(total_steps$total, breaks = 10, main = "Histogram of total number of steps taken each day",
-     xlab = "Total number of steps per day")
+hist(steps_by_day$steps, main = paste("Total Steps Each Day"), col="green",xlab="Number of Steps")
 ```
 
 Finally, we compute *mean* and *median* values of the total number of steps.
 
 ```{r mean_and_median}
-mean(total_steps$total)
-median(total_steps$total)
+rmean <- mean(steps_by_day$steps)
+rmedian <- median(steps_by_day$steps)
 ```
 
 ## What is the average daily activity pattern?
 
-Below, we can see as the number of steps changes throught the day (averaged across all the days).
+Calculate average steps for each interval for all days
+Plot the Average Number Steps per Day by Interval
+Find interval with most average steps
 
 ```{r timeseries}
-steps_per_interval <- activity %>% 
-  group_by(interval) %>% 
-  summarize(mean = mean(steps, na.rm = TRUE))
-plot(steps_per_interval, type = 'l', main = "Average number of steps per interval",
-     xlab = "Time interval", ylab = "Average number of steps")
+steps_by_interval <- aggregate(steps ~ interval, data, mean)
+plot(steps_by_interval$interval,steps_by_interval$steps, type="l", xlab="Interval", ylab="Number of Steps",main="Average Number of Steps per Day by Interval")
 ```
 
 The 5-minute interval with maximum number of steps is as follows:
 
 ```{r}
-max_steps <- max(steps_per_interval$mean)
-subset(steps_per_interval, mean == max_steps)$interval
+max_interval <- steps_by_interval[which.max(steps_by_interval$steps),1]
+max_interval
 ```
 
 ## Imputing missing values
 
-The total number of rows with missing values:
+1.Calculate and report the total number of missing values in the dataset
 
 ```{r missing_values}
-sum(!complete.cases(activity))
+NATotal <- sum(!complete.cases(data))
+NATotal
 ```
 
-We fill the missing values of steps with the average number of steps
-for the given 5-minute interval.
+2.Using Mean for the day compute missing values
 
 ```{r imputation}
-interval_means <- sapply(activity$interval, 
-                         function(x) subset(steps_per_interval, interval == x)$mean)
-missing <- is.na(activity$steps)
-activity_imputed <- activity
-activity_imputed[missing, ]$steps <- interval_means[missing]
+StepsAverage <- aggregate(steps ~ interval, data = data, FUN = mean)
+fillNA <- numeric()
+for (i in 1:nrow(data)) {
+    obs <- data[i, ]
+    if (is.na(obs$steps)) {
+        steps <- subset(StepsAverage, interval == obs$interval)$steps
+    } else {
+        steps <- obs$steps
+    }
+    fillNA <- c(fillNA, steps)
+}       
 ```
 
-Next, we calculate total number of steps on the imputed data and visualize the histogram
-in order to compare it with the original data.
+3. Make a histogram of the total number of steps taken each day and Calculate and report the mean and median total number of steps taken per day.
 
 ```{r histogram_imputed}
-total_steps_imputed <- activity_imputed %>% 
-  group_by(date) %>% 
-  summarize(total = sum(steps))
-hist(total_steps_imputed$total, breaks = 10, main = 
-       "Histogram of total number of steps per day with no missing values",
-     xlab = "Total number of steps per day")
+new_activity <- data
+new_activity$steps <- fillNA
+StepsTotalUnion <- aggregate(steps ~ date, data = new_activity, sum, na.rm = TRUE)
+hist(StepsTotalUnion$steps, main = paste("Total Steps Each Day"), col="blue", xlab="Number of Steps")
+#Create Histogram to show difference. 
+hist(steps_by_day$steps, main = paste("Total Steps Each Day"), col="green", xlab="Number of Steps", add=T)
+legend("topright", c("Imputed", "Non-imputed"), col=c("blue", "green"), lwd=10)
 ```
 
 For the sake of comparison, we also compute new *mean* and *median* values 
 of the total number of steps.
 
 ```{r mean_and_median_imputed}
-mean(total_steps_imputed$total)
-median(total_steps_imputed$total)
+rmeantotal <- mean(StepsTotalUnion$steps)
+rmediantotal <- median(StepsTotalUnion$steps)
+rmeantotal
+rmediantotal
+
+
 ```
 
 We can see that the chosen strategy has no effect on the mean; 
 the median is a bit higher and now equal to the mean.
 
 ## Are there differences in activity patterns between weekdays and weekends?
-We add a column `day_in_week` (a factor variable) which indicates whether the measuring occurred
-during a weekday or a weekend.
+Created a plot to compare and contrast number of steps between the week and weekend. There is a higher peak earlier on weekdays, and more overall activity on weekends.
 
 ```{r day_in_week}
-day_in_week <- function(date) {
-  wday <- wday(date)
-  is_weekend <- wday == 1 | wday == 6
-  
-  day_in_week <- character(length = length(date))
-  day_in_week[is_weekend] <- "weekend"
-  day_in_week[!is_weekend] <- "weekday"
-  
-  return(as.factor(day_in_week))
-}
-activity_imputed <- activity_imputed %>% mutate(day_in_week = day_in_week(date))
+weekdays <- c("Monday", "Tuesday", "Wednesday", "Thursday", 
+              "Friday")
+new_activity$dow = as.factor(ifelse(is.element(weekdays(as.Date(new_activity$date)),weekdays), "Weekday", "Weekend"))
+StepsTotalUnion <- aggregate(steps ~ interval + dow, new_activity, mean)
+library(lattice)
+xyplot(StepsTotalUnion$steps ~ StepsTotalUnion$interval|StepsTotalUnion$dow, main="Average Steps per Day by Interval",xlab="Interval", ylab="Steps",layout=c(1,2), type="l")
 ```
 
-Finally, we plot the time series of number of steps per intervals 
-comparing the weekdays and weekends. We use `ggplot` library for this purpose.
-
-```{r timeseries_compare, message=FALSE, warning=FALSE}
-steps_per_interval_imputed <- activity_imputed %>% 
-  group_by(interval, day_in_week) %>% 
-  summarize(mean = mean(steps, na.rm = TRUE))
-library(ggplot2)
-g <- ggplot(steps_per_interval_imputed, aes(interval, mean))
-g <- g + facet_grid(day_in_week ~ .)
-g <- g + geom_line()
-g + xlab("Interval") + ylab("Number of steps")
-```
