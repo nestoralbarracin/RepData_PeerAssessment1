@@ -14,7 +14,7 @@ manipulation with the data. The dates are handled with the `lubridate` library.
 ```{r load_and_process, message=FALSE}
 library(dplyr)
 library(lubridate)
-activity <- tbl_df(read.csv("activity.csv")) %>% mutate(date = ymd(date))
+activity <- tbl_df(read.csv("C:/SPB_Data/activity.csv")) %>% mutate(date = ymd(date))
 ```
 
 
